@@ -1,54 +1,45 @@
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtml from "sanitize-html";
 
 /**
  * Email HTML is hostile input (CLAUDE.md security rule #2). We sanitize every
- * body with DOMPurify and block remote images by default to defeat tracking
- * pixels. Remote <img> sources are stripped and remembered so the client can
- * offer a per-message "Load images" toggle.
+ * body server-side and block remote images by default to defeat tracking
+ * pixels. The result is additionally rendered inside a script-disabled
+ * sandboxed iframe on the client as defense-in-depth.
  *
- * Hooks are registered once on the shared DOMPurify instance and read
- * module-level state set immediately before each `sanitizeEmailHtml` call.
+ * (We use sanitize-html rather than DOMPurify here: DOMPurify needs a browser
+ * DOM, and jsdom's dependency tree breaks under Node's ESM loader in the
+ * compiled production build. sanitize-html is a Node-native equivalent.)
+ *
+ * `sawRemoteImage` is module-level and reset at the start of each call —
  * JavaScript is single-threaded, so this is race-free.
  */
-let allowRemoteImages = false;
 let sawRemoteImage = false;
 
-function isRemoteUrl(url: string | null): boolean {
-  if (!url) return false;
+function isRemoteUrl(url: string): boolean {
   return /^\s*(https?:)?\/\//i.test(url);
 }
 
-// Minimal structural view of a DOM element — avoids pulling the whole DOM lib
-// into the Node server's tsconfig just for these few methods.
-interface MinimalElement {
-  tagName: string;
-  getAttribute(name: string): string | null;
-  setAttribute(name: string, value: string): void;
-  removeAttribute(name: string): void;
-}
-
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  const el = node as unknown as MinimalElement;
-
-  // Open all links in a new tab and neutralize reverse-tabnabbing.
-  if (el.tagName === "A") {
-    el.setAttribute("target", "_blank");
-    el.setAttribute("rel", "noopener noreferrer nofollow");
-  }
-
-  // Block remote images unless explicitly allowed for this message.
-  if (el.tagName === "IMG") {
-    el.removeAttribute("srcset"); // can't reliably gate responsive sources
-    const src = el.getAttribute("src");
-    if (isRemoteUrl(src)) {
-      sawRemoteImage = true;
-      if (!allowRemoteImages) {
-        el.removeAttribute("src");
-        if (src) el.setAttribute("data-blocked-src", src);
-      }
-    }
-  }
-});
+const ALLOWED_TAGS = [
+  ...sanitizeHtml.defaults.allowedTags,
+  "img",
+  "h1",
+  "h2",
+  "span",
+  "center",
+  "font",
+  "u",
+  "s",
+  "hr",
+  "figure",
+  "figcaption",
+  "col",
+  "colgroup",
+  "tbody",
+  "thead",
+  "tfoot",
+  "caption",
+  "pre",
+];
 
 export interface SanitizedBody {
   html: string;
@@ -59,14 +50,52 @@ export function sanitizeEmailHtml(
   rawHtml: string,
   options: { allowRemoteImages?: boolean } = {},
 ): SanitizedBody {
-  allowRemoteImages = options.allowRemoteImages ?? false;
+  const allowRemoteImages = options.allowRemoteImages ?? false;
   sawRemoteImage = false;
 
-  const html = DOMPurify.sanitize(rawHtml, {
-    WHOLE_DOCUMENT: false,
-    FORBID_TAGS: ["script", "iframe", "object", "embed", "base", "form"],
-    FORBID_ATTR: ["onerror", "onload", "onclick"],
-    ADD_ATTR: ["target"],
+  const html = sanitizeHtml(rawHtml, {
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: {
+      "*": [
+        "style",
+        "class",
+        "dir",
+        "align",
+        "valign",
+        "width",
+        "height",
+        "bgcolor",
+        "color",
+        "colspan",
+        "rowspan",
+      ],
+      a: ["href", "name", "target", "rel"],
+      img: ["src", "alt", "title", "width", "height", "data-blocked-src"],
+      font: ["face", "color", "size"],
+      table: ["border", "cellpadding", "cellspacing", "width", "bgcolor", "align"],
+    },
+    // No "javascript:" — only safe link/image schemes.
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowedSchemesByTag: { img: ["http", "https", "data", "cid"] },
+    allowProtocolRelative: true,
+    transformTags: {
+      a: (tagName, attribs) => {
+        attribs.target = "_blank";
+        attribs.rel = "noopener noreferrer nofollow";
+        return { tagName, attribs };
+      },
+      img: (tagName, attribs) => {
+        const src = attribs.src;
+        if (src && isRemoteUrl(src)) {
+          sawRemoteImage = true;
+          if (!allowRemoteImages) {
+            attribs["data-blocked-src"] = src;
+            delete attribs.src;
+          }
+        }
+        return { tagName, attribs };
+      },
+    },
   });
 
   return { html, hasRemoteImages: sawRemoteImage };

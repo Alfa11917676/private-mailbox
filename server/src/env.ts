@@ -1,12 +1,23 @@
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
-// Load server/.env regardless of the current working directory, so this works
-// identically whether started via `pnpm dev` (cwd = server/) or the standalone
-// imap-check script. This module lives in server/src/, so .env is one level up.
+// Load server/.env regardless of cwd or build layout. Candidates cover:
+//   cwd/.env            — `pnpm --filter server …` and systemd WorkingDirectory=server
+//   ../.env  (dev)      — this module at server/src/
+//   ../../.env (prod)   — compiled module at server/dist/src/
 const here = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(here, "../.env") });
+for (const candidate of [
+  resolve(process.cwd(), ".env"),
+  resolve(here, "../.env"),
+  resolve(here, "../../.env"),
+]) {
+  if (existsSync(candidate)) {
+    dotenv.config({ path: candidate });
+    break;
+  }
+}
 
 /** Required env keys — startup fails fast (and loudly) if any are missing. */
 const REQUIRED = [

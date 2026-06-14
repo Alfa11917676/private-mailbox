@@ -1,7 +1,10 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyError } from "fastify";
 import cookie from "@fastify/cookie";
 import csrf from "@fastify/csrf-protection";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import { env } from "./env.js";
 import { HttpError } from "./errors.js";
 import { imap } from "./imap.js";
@@ -64,6 +67,24 @@ app.get("/api/health", async () => ({
 
 await app.register(authRoutes);
 await app.register(mailRoutes);
+
+// In production the Node server also serves the built web app, so the whole
+// thing runs from a single origin (keeps the httpOnly cookie + CSRF model
+// simple — no CORS). In dev the Vite server handles this with a proxy instead.
+if (env.isProd) {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const webDist = process.env.WEB_DIST ?? resolve(here, "../../../web/dist");
+  await app.register(fastifyStatic, { root: webDist, wildcard: false });
+  // SPA fallback: non-API GETs return index.html; everything else is a JSON 404.
+  app.setNotFoundHandler((request, reply) => {
+    if (request.raw.method === "GET" && !request.url.startsWith("/api")) {
+      return reply.sendFile("index.html");
+    }
+    return reply
+      .status(404)
+      .send({ error: { code: "not_found", message: "Not found" } });
+  });
+}
 
 // --- Lifecycle ----------------------------------------------------------
 async function shutdown(signal: string): Promise<void> {

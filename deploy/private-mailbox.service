@@ -1,0 +1,32 @@
+# systemd unit for the Fastify server (serves the API + built web app).
+# Install:  sudo cp deploy/private-mailbox.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now private-mailbox
+# Logs:     journalctl -u private-mailbox -f
+#
+# Assumes the repo lives at /opt/private-mailbox and node is at /usr/bin/node
+# (adjust ExecStart to `which node` if you use nvm). Secrets are read from
+# server/.env by the app itself — no secrets in this file.
+
+[Unit]
+Description=Private Mailbox (Fastify + web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mailbox
+WorkingDirectory=/opt/private-mailbox/server
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/src/index.js
+Restart=always
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/private-mailbox
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

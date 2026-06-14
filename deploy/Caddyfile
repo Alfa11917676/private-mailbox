@@ -1,0 +1,11 @@
+# Caddy reverse proxy for the mailbox.
+# Caddy obtains + renews HTTPS certificates automatically (Let's Encrypt),
+# as long as this domain's DNS A/AAAA record points at this VM and ports
+# 80 + 443 are open (both at the cloud firewall AND the OS firewall).
+#
+# Replace mail.arnabray.me if you use a different hostname.
+
+mail.arnabray.me {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3001
+}
