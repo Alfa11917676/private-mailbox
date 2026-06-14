@@ -97,7 +97,7 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 try {
-  await app.listen({ port: env.port, host: "127.0.0.1" });
+  await app.listen({ port: env.port, host: env.host });
 } catch (err) {
   app.log.error(err);
   process.exit(1);

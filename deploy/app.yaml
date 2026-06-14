@@ -1,0 +1,37 @@
+# DigitalOcean App Platform spec — runs the app as a persistent Web Service
+# (NOT a serverless function), so the pooled IMAP connection + cache work.
+# It builds from GitHub and gets a free *.ondigitalocean.app HTTPS subdomain.
+#
+# Deploy:  doctl apps create --spec deploy/app.yaml
+# Secrets (APP_PASSPHRASE, SESSION_SECRET, MAIL_PASSWORD) are set as encrypted
+# env vars at deploy time — never committed here.
+
+name: private-mailbox
+region: nyc
+services:
+  - name: web
+    github:
+      repo: Alfa11917676/private-mailbox
+      branch: main
+      deploy_on_push: true
+    build_command: corepack enable && pnpm install --frozen-lockfile && pnpm --filter server build && pnpm --filter web build
+    run_command: node server/dist/src/index.js
+    environment_slug: node-js
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    http_port: 8080
+    health_check:
+      http_path: /api/health
+    envs:
+      - { key: NODE_ENV, value: production }
+      - { key: HOST, value: "0.0.0.0" }
+      - { key: PORT, value: "8080" }
+      - { key: MAIL_USER, value: contact@arnabray.me }
+      - { key: IMAP_HOST, value: mail.privateemail.com }
+      - { key: IMAP_PORT, value: "993" }
+      - { key: SMTP_HOST, value: mail.privateemail.com }
+      - { key: SMTP_PORT, value: "465" }
+      # Secrets — set at deploy time (doctl/dashboard), not stored in the repo:
+      - { key: APP_PASSPHRASE, type: SECRET }
+      - { key: SESSION_SECRET, type: SECRET }
+      - { key: MAIL_PASSWORD, type: SECRET }

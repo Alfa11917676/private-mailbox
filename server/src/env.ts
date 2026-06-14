@@ -74,6 +74,9 @@ export const env = {
   smtpHost: read("SMTP_HOST"),
   smtpPort: readPort("SMTP_PORT"),
   port: Number(process.env.PORT) || 3001,
+  // 127.0.0.1 behind a local reverse proxy (Droplet+Caddy); 0.0.0.0 in a
+  // managed container (DO App Platform / Render / Fly) so the platform can route.
+  host: process.env.HOST ?? "127.0.0.1",
   nodeEnv,
   isProd: nodeEnv === "production",
 } as const;
