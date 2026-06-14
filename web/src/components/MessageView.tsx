@@ -81,11 +81,16 @@ function patchFlagged(
 }
 
 function buildSrcDoc(html: string): string {
+  // Render on a white background: emails are authored assuming white bg, so
+  // inline `color: #000` etc. would be unreadable on the app's dark theme.
   return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
-    body{font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;background:#0b1120;margin:14px;line-height:1.55;overflow-wrap:anywhere;}
-    a{color:#7dd3fc;} img{max-width:100%;height:auto;} table{max-width:100%;}
-    blockquote{border-left:3px solid #334155;margin:0;padding-left:12px;color:#94a3b8;}
-  </style></head><body>${html}</body></html>`;
+    html,body{background:#ffffff;color:#1f2937;margin:0;padding:0;}
+    body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;padding:18px 22px;overflow-wrap:anywhere;}
+    .wrap{max-width:760px;}
+    p{margin:0 0 12px;}
+    a{color:#1d4ed8;} img{max-width:100%;height:auto;} table{max-width:100%;}
+    blockquote{border-left:3px solid #cbd5e1;margin:14px 0;padding:2px 0 2px 14px;color:#475569;}
+  </style></head><body><div class="wrap">${html}</div></body></html>`;
 }
 
 export default function MessageView({
@@ -197,7 +202,7 @@ export default function MessageView({
         sandbox="allow-popups allow-popups-to-escape-sandbox"
         srcDoc={buildSrcDoc(data.html)}
         className="w-full flex-1"
-        style={{ background: "#0b1120" }}
+        style={{ background: "#ffffff" }}
       />
     </article>
   );
